@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CloudPage in SFMC — Limitations of CreateSalesforceObject() and UpdateSingleSalesforceObject()</title>
+  <meta name="description" content="Practical analysis of limitations, risks, and mitigation patterns when using AMPscript CreateSalesforceObject() and UpdateSingleSalesforceObject() with Marketing Cloud Connect from a CloudPage.">
+  <meta property="og:title" content="CloudPage in SFMC — Limitations of CreateSalesforceObject() and UpdateSingleSalesforceObject()">
+  <meta property="og:description" content="Practical analysis of limitations, risks, and mitigation patterns when using AMPscript CreateSalesforceObject() and UpdateSingleSalesforceObject() with Marketing Cloud Connect from a CloudPage.">
+  <meta property="og:type" content="article">
+  <style>
+:root { --bg:#0b1220; --card:#121a2b; --text:#e6edf3; --muted:#a7b0c0; --accent:#4fb3ff; }
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.55}
+.container{max-width:980px;margin:0 auto;padding:48px 20px}
+header{margin-bottom:28px}
+h1{font-size:32px;line-height:1.2;margin:0 0 8px}
+.summary{color:var(--muted);margin:0}
+.card{background:var(--card);border:1px solid #1d2740;border-radius:16px;padding:24px;margin:18px 0;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+h2{font-size:22px;margin:8px 0 12px}
+h3{font-size:18px;margin:16px 0 8px}
+ul{margin:0 0 0 1rem;padding-left:1rem}
+li{margin:6px 0}
+code,kbd{background:#0f1830;border:1px solid #1b2a4a;border-radius:8px;padding:.08rem .35rem;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.footer{color:var(--muted);font-size:14px;margin-top:24px}
+hr{border:0;border-top:1px solid #1d2740;margin:20px 0}
+.checklist li{list-style:'☑  '}
+@media print{
+  body{background:#fff;color:#111}
+  .card{background:#fff;border-color:#ddd;box-shadow:none}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>CloudPage in SFMC — Limitations of CreateSalesforceObject() and UpdateSingleSalesforceObject()</h1>
+    <p class="summary">Practical analysis of limitations, risks, and mitigation patterns when using AMPscript CreateSalesforceObject() and UpdateSingleSalesforceObject() with Marketing Cloud Connect from a CloudPage.</p>
+    <p class="summary"><strong>Date:</strong> 2025-09-01 &middot; <strong>Author:</strong> SF Recursos — ChatGPT (for Santi)</p>
+  </header>
+
+  <section class="card">
+    <div># CloudPage in SFMC — Limitations of CreateSalesforceObject() and UpdateSingleSalesforceObject()<br><br>**Date:** 2025-09-01  <br>**Author:** SF Recursos — ChatGPT (for Santi)<br><br>## TL;DR<br>- These are **synchronous, per-record** calls — no bulk.  <br>- They don’t consume the **org’s daily API limit**, but they **are** subject to **concurrency**, **timeouts**, and **locks** in Salesforce.  <br>- They fire **Validation Rules/Flows/Triggers** and require proper **FLS/CRUD** for the integration user.  <br>- Error handling is **basic**; implement **logging** to a Data Extension.  <br>- Use them for **few records** (forms, simple creates). Avoid them with **volume** or **traffic spikes**.<br><br>---<br><br>## Key limitations<br>1. **1:1 granularity (no bulk)**  <br>   Each call creates/updates **one** record. Looping many records from a CloudPage adds latency and timeout risk.<br><br>2. **Execution and concurrency limits**  <br>   - They don’t count against the org’s **daily API limit**, but **concurrency** and **response time** limits still apply.  <br>   - Under concurrent traffic you can see waits, saturation, and failures.<br><br>3. **Record locking / UNABLE_TO_LOCK_ROW**  <br>   Simultaneous updates on the same record (or parents) can lock. Common with data skew or parallel automations.<br><br>4. **Validations and automations run**  <br>   Validation Rules, Flows/Process Builder, and Triggers execute; they can block, cascade changes, or extend transaction time.<br><br>5. **Permissions and visibility (FLS/CRUD)**  <br>   Execution uses the **integration user**; non-visible or non-editable objects/fields ⇒ error. Consider network/IP policies if applicable.<br><br>6. **Strict data formats (especially dates)**  <br>   Use ISO‑8601/UTC for Date/DateTime. Normalize picklists, required fields, and lengths to avoid rejections.<br><br>7. **CloudPages runtime timeouts**  <br>   Loops with many calls in a single request can exhaust the Marketing Cloud runtime.<br><br>8. **Limited observability**  <br>   - `CreateSalesforceObject()` returns the **Id**.  <br>   - `UpdateSingleSalesforceObject()` returns **1/0**.  <br>   A DE log is essential (payload and result).<br><br>9. **Performance**  <br>   Every call has network/serialization overhead; throughput drops as you scale up.<br><br>10. **Compatibility/scope**  <br>   - Works with standard and custom objects.  <br>   - No **upsert by External Id**; you need custom logic for create vs update (or use APIs that support native upsert).<br><br>---<br><br>## When to use (and when not to)<br>**Use if…**  <br>- There are **few records per interaction** (1–5) and you need a **synchronous** response (e.g., preference form, simple case/appointment creation).<br><br>**Avoid if…**  <br>- There’s **volume** and/or **concurrency** (long lists, traffic spikes, multi-object cascades).<br><br>---<br><br>## Recommended mitigation patterns<br>1. **Asynchronous staging in a Data Extension**  <br>   Write first to a DE with idempotency (anti-resubmit token) and process in **Automation Studio** (SSJS/WSProxy) in **batches** with **retries** and **rate limiting**.<br><br>2. **Salesforce APIs for volume**  <br>   For large loads, use **REST/Bulk API 2.0** from a worker/Function with **External IDs (upsert)**, exponential **backoff**, and **row lock** handling.<br><br>3. **Optimize Salesforce automations**  <br>   Review **Validation Rules/Flows/Triggers**: bulk‑safe, non‑recursive, and time‑bounded to reduce locks and timeouts.<br><br>4. **Permissions and IPs**  <br>   Ensure **FLS/CRUD** for the integration user and, if applicable, allowlist Marketing Cloud IPs in Salesforce (**Network Access** or access policies).<br><br>5. **Logging and observability**  <br>   - DE audit (timestamp, object, payload, result, error).  <br>   - Correlate by request id/session id for troubleshooting.  <br>   - Basic alerts (Automation + query for recent errors).<br><br>---<br><br>## Pre‑go‑live checklist<br>- [ ] Validate the integration user’s FLS/CRUD per object/field.  <br>- [ ] Test with **representative volume** and **simulated concurrency**.  <br>- [ ] Normalize **formats** (dates, picklists, lengths).  <br>- [ ] Review **Validation Rules/Flows/Triggers** for impact and timings.  <br>- [ ] Implement **DE logging** and **retry** policies.  <br>- [ ] Define a **fallback** (DE staging if the synchronous call fails).<br><br>---<br><br>### Note<br>The AMPscript update function is `UpdateSingleSalesforceObject()` (often informally abbreviated as *UpdateSalesforceObject*).<br></div>
+  </section>
+
+  <div class="footer">
+    © 2025 — Generated for internal use. Host this file as <code>index.html</code> on any static hosting.
+  </div>
+</div>
+</body>
+</html>
