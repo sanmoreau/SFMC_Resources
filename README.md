@@ -1,7 +1,7 @@
 # CloudPage SFMC — Limitaciones de CreateSalesforceObject y UpdateSingleSalesforceObject
 
 **Fecha:** 2025-09-01  
-**Autor:** SF Recursos — ChatGPT (para Santi)
+**Autor:** Santi
 
 ## Resumen (TL;DR)
 - Son llamadas **sincrónicas y por registro**: no hay *bulk*.  
