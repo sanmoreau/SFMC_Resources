@@ -1,7 +1,7 @@
 # CloudPage in SFMC — Limitations of CreateSalesforceObject() and UpdateSingleSalesforceObject()
 
 **Date:** 2025-09-01  
-**Author:** SF Recursos — ChatGPT (for Santi)
+**Author:Santi
 
 ## TL;DR
 - These are **synchronous, per-record** calls — no bulk.  
